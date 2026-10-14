@@ -41,7 +41,38 @@ function App(){
  function beginRound(r){if(roundStatus==='waiting'){flash('The organizer has not started the event yet.');return;}if(roundStatus==='ended'){flash('The event has ended.');return;}setActiveRound(r.id);setQIndex(0);setChoice(null);setPage('round');}
  async function submitQuiz(){if(choice===null){flash('Choose an answer first.');return;}const bank=activeRound===1?quiz:vision;const item=bank[qIndex%bank.length];const correct=choice===item.a;const key=`${activeRound}-${qIndex}`;setAnswers(v=>({...v,[key]:{choice,correct}}));if(correct)setScores(v=>({...v,[activeRound]:(v[activeRound]||0)+20})); if(supabase&&teamId){const {error}=await supabase.rpc('nn_submit_answer',{p_team_id:teamId,p_round_id:activeRound,p_question_index:qIndex,p_answer:String(choice),p_points:correct?20:0});if(error)flash('Answer saved locally; database sync failed.');} if(qIndex+1>=bank.length){setPage('result');loadTeams();}else{setQIndex(qIndex+1);setChoice(null);}}
  async function submitOpen(type){const value=type==='code'?codeText:type==='prompt'?promptText:innovationText;if(value.trim().length<15){flash('Add a little more detail before submitting (at least 15 characters).');return;}const row={team,round:activeRound,type,content:value,at:new Date().toISOString(),status:'Awaiting judge review'};setSubmissions(v=>[row,...v]);if(supabase&&teamId){const {error}=await supabase.rpc('nn_submit_open_response',{p_team_id:teamId,p_round_id:activeRound,p_response_type:type,p_content:value});if(error){flash(`Saved in this browser, but sync failed: ${error.message}`);return;}}flash('Submission received. A judge can review it in the admin panel.');setPage('result');}
- async function doAdmin(){if(supabase){const {error}=await supabase.rpc('nn_admin_set_status',{p_access_code:adminCode,p_status:'waiting',p_round_id:1});if(error){flash('Organizer access denied or setup incomplete.');return;}}else if(adminCode!=='2077'){flash('Access code not accepted.');return;}setAdmin(true);setPage('admin');flash(supabase?'Organizer authenticated.':'Demo admin unlocked; browser-only preview.');}
+ 
+async function doAdmin() {
+  setLoading(true);
+
+  try {
+    const response = await fetch(
+      'https://rough-violet-acbd.indlasainikethreddy08.workers.dev/admin/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminCode })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.token) {
+      flash(data.error || 'Admin login failed.');
+      return;
+    }
+
+    sessionStorage.setItem('nn_admin_token', data.token);
+    setAdmin(true);
+    setPage('admin');
+    flash('Organizer authenticated.');
+  } catch {
+    flash('Cannot connect to the admin server. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+}
+
  async function changeStatus(status){if(supabase){const {error}=await supabase.rpc('nn_admin_set_status',{p_access_code:adminCode,p_status:status,p_round_id:activeRound});if(error){flash(`Could not update shared event state: ${error.message}`);return;}}setRoundStatus(status);flash(status==='live'?'Event is now LIVE.':status==='ended'?'Event marked as ended.':'Event returned to waiting room.');}
  const currentRound=rounds.find(r=>r.id===activeRound)||rounds[0];const bank=activeRound===1?quiz:vision;const item=bank[qIndex%bank.length];const score=Object.values(scores).reduce((a,b)=>a+b,0);const leaderboard=useMemo(()=>{let combined=[...teams];if(team&&!combined.some(t=>t.name===team))combined.push({name:team,score});return combined.sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,10)},[teams,team,score]);
  return <div className="app-shell"><div className="ambient ambient-one"/><div className="ambient ambient-two"/><header className="topbar"><a className="brand" onClick={()=>setPage(team?'dashboard':'home')}><span className="brand-mark"><BrainCircuit size={24}/></span><span>NEURAL<span className="gradient-text"> NEXUS</span><small>AI CLUB · CHALLENGE ARENA</small></span></a><nav className={menu?'nav open':'nav'}><button onClick={()=>setPage('home')}>Overview</button><button onClick={()=>setPage('rounds')}>Rounds</button><button onClick={()=>setPage('leaderboard')}>Leaderboard</button><button onClick={()=>setPage('adminLogin')} className="nav-admin"><LockKeyhole size={14}/> Admin</button></nav><div className="top-actions">{team?<><span className="team-chip"><span className="live-dot"/>{team}</span><button className="icon-btn" title="Log out" onClick={logout}><LogOut size={17}/></button></>:<button className="btn btn-small btn-outline" onClick={()=>document.getElementById('join')?.scrollIntoView({behavior:'smooth'})}>Join a team <ArrowRight size={15}/></button>}<button className="icon-btn mobile-menu" onClick={()=>setMenu(!menu)}><Menu size={19}/></button></div></header>
