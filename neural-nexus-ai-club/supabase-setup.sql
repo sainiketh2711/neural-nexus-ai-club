@@ -108,20 +108,8 @@ grant execute on function public.nn_submit_open_response(uuid,integer,text,text)
 -- For a real event, add a Cloudflare Worker or Supabase Edge Function with server-side admin
 -- authentication to start/stop rounds, grade written submissions, export data, and reset scores.
 
--- Organizer phase control. The code is validated in the database, not in the browser bundle.
--- Change 2077 before the event; for higher security replace this with a proper admin identity.
-create or replace function public.nn_admin_set_status(p_access_code text, p_status text, p_round_id integer default 1)
-returns table(status text, current_round integer)
-language plpgsql security definer set search_path = public as $$
-begin
-  if p_access_code <> '2077' then raise exception 'Organizer access denied'; end if;
-  if p_status not in ('waiting','live','ended') then raise exception 'Invalid event status'; end if;
-  if p_round_id not between 1 and 5 then raise exception 'Invalid round'; end if;
-  update public.nn_event_state set status=p_status,current_round=p_round_id,updated_at=now() where singleton=true;
-  return query select e.status,e.current_round from public.nn_event_state e where singleton=true;
-end; $$;
-
 create or replace view public.nn_public_event_state as
-select status,current_round,updated_at from public.nn_event_state where singleton=true;
+select status,current_round,updated_at
+from public.nn_event_state where singleton=true;
+
 grant select on public.nn_public_event_state to anon, authenticated;
-grant execute on function public.nn_admin_set_status(text,text,integer) to anon, authenticated;
